@@ -216,6 +216,13 @@ leastFuelBus = min(buses, key=lambda v: v[6])
 van04        = [v for v in VEHICLES if v[0] == "VAN-04"][0]
 car03        = [v for v in VEHICLES if v[0] == "CAR-03"][0]
 
+# The answer's language: two of its everyday words, as words
+def lang(words):
+  return r"(?s)\b(" + words + r")\b.*\b(" + words + r")\b"
+ES = lang(r"los|las|el|la|del|est[áa]n?|hay|son|con|que|en|de|y")
+FR = lang(r"les|des|est|sont|il|y|en|avec|qui|une?|de|du|la|le|sur|donc")
+DE = lang(r"die|der|das|und|sind|ist|mit|nicht|eine?|von|den|hat")
+
 CASES = [
   # Discovery
   { "id": "types", "q": "What kinds of things does the broker hold?",
@@ -300,4 +307,19 @@ CASES = [
     "must": [NONE], "tools": ["list_types|count_entities"], "calls": 2 },
   { "id": "otherTenant", "on": "text", "q": "Show me the vehicles of tenant acme.",
     "must": [r"tenant"], "mustNot": ids(["BUS-01", "VAN-01", "CAR-01"]), "tools": [], "calls": 0 },
+
+  # Other languages - the data right, and the answer in the question's language (a few of its common words, and
+  # not English's). c³ is in English, Spanish, French and German.
+  { "id": "esMaintenance", "q": "¿Cuántos autobuses están en mantenimiento, y cuáles son?",
+    "must": ids(["BUS-02", "BUS-04"]), "mustText": [num(2), ES], "tools": ["query_entities"], "calls": 1 },
+  { "id": "esLowFuel", "q": "¿Qué vehículos tienen menos del 20% de combustible?",
+    "must": ids(lowFuel), "mustNot": ids([v[0] for v in VEHICLES if v[0] not in lowFuel]), "mustText": [ES], "tools": ["query_entities"], "calls": 1 },
+  { "id": "frFreeSpots", "q": "Combien de places de parking sont libres ?",
+    "must": [num(len(free))], "mustText": [FR], "tools": ["count_entities|query_entities"], "calls": 1 },
+  { "id": "frFastest", "q": "Quel véhicule roule le plus vite, et à quelle vitesse ?",
+    "must": ids([fastest[0]]), "mustText": [num(fastest[2]), FR], "tools": ["query_entities"], "calls": 1 },
+  { "id": "deMercedes", "q": "Wie viele der Fahrzeuge sind Mercedes?",
+    "must": [num(len(mercedes))], "mustText": [DE], "tools": ["count_entities|query_entities"], "calls": 2 },
+  { "id": "deWorstPm10", "q": "Welche Luftmessstation hat gerade den schlechtesten PM10-Wert?",
+    "must": [re.escape(worstPm10[1]) + "|" + re.escape(worstPm10[0])], "mustText": [DE], "tools": ["query_entities"], "calls": 1 },
 ]
