@@ -10,7 +10,7 @@
 # of calls - with the tokens and the time. A result file per run, so a change to a description is measured,
 # not guessed.
 #
-#   run.py [--set fleet,building] [--provider anthropic_api] [--model M] [--broker URL] [--cases a,b]
+#   run.py [--set fleet,building,diagnosis] [--provider anthropic_api] [--model M] [--broker URL] [--cases a,b]
 #          [--parallel N] [--no-seed] [--label L] [--rescore <results file>]
 #
 import argparse, concurrent.futures, datetime, importlib, json, os, re, sys
@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "providers"))
 
-SETS = ("fleet", "building")
+SETS = ("fleet", "building", "diagnosis")
 
 
 
@@ -72,7 +72,7 @@ def score(case, result):
 
 def main():
   ap = argparse.ArgumentParser()
-  ap.add_argument("--set",      default=",".join(SETS))
+  ap.add_argument("--set",      default="fleet,building")             # diagnosis: a coraine with the admin API
   ap.add_argument("--provider", default="anthropic_api")
   ap.add_argument("--model",    default="claude-sonnet-5-5")
   ap.add_argument("--broker",   default=os.environ.get("BROKER_URL", "http://127.0.0.1:1026"))
@@ -108,9 +108,13 @@ def main():
     if not a.no_seed:
       mod.seed(broker)
     temporal = mod.temporal(broker)
-    mcpCmd   = [os.path.join(HERE, "..", "corMcp"), "--broker", broker, "--tenant", mod.TENANT]
+    mcpCmd   = [os.path.join(HERE, "..", "corMcp"), "--broker", broker, "--tenant", mod.TENANT] + getattr(mod, "MCP_ARGS", [])
+    docs     = getattr(mod, "docs", lambda: True)()
     for c in mod.CASES:
       if a.cases and c["id"] not in a.cases.split(","):
+        continue
+      if c.get("docs") and not docs:
+        skipped += 1
         continue
       if c.get("temporal") and not temporal:
         skipped += 1
