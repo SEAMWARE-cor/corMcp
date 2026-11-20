@@ -154,12 +154,13 @@ def main():
         def toolsList():
             tools = m.call("tools/list")["result"]["tools"]
             names = [t["name"] for t in tools]
-            assert names == ["list_types", "list_attributes", "query_entities", "get_entity", "count_entities", "temporal", "list_subscriptions", "query_registrations"], names
+            assert names == ["list_types", "list_attributes", "query_entities", "get_entity", "count_entities", "temporal", "list_subscriptions", "query_registrations",
+                             "broker_status", "broker_config", "diagnose_subscription", "broker_metrics", "list_indexes", "bridge_inventory"], names
             for t in tools:
                 assert t["inputSchema"]["type"] == "object", t["name"]
                 assert t["annotations"]["readOnlyHint"] is True
                 assert len(t["description"]) > 40
-        check("tools/list: eight read tools, schemas, annotations", toolsList)
+        check("tools/list: fourteen read tools, schemas, annotations", toolsList)
 
         def listTypes():
             types = ok(m.tool("list_types"))["types"]
@@ -264,6 +265,85 @@ def main():
             r = ok(m.tool("query_registrations", type=TYPE))
             assert r["registrations"] == []
         check("query_registrations: a type", registrations)
+
+        def brokerStatus():
+            r = okOrSkip(m.tool("broker_status"))
+            assert r["broker"] == BROKER and r["findings"], r
+            if "version" in r:
+                assert r["health"] == "ok" and "requests" in r and "notifications" in r, r
+        check("broker_status: version, health, counters, findings", brokerStatus)
+
+        def brokerConfig():
+            r = okOrSkip(m.tool("broker_config", match="port"))
+            assert any(o["name"] == "--port" and "from" in o and "env" in o for o in r["list"]), r
+            r = ok(m.tool("broker_config", all=True))
+            assert len(r["list"]) == r["options"], r
+        check("broker_config: by name, all", brokerConfig)
+
+        def brokerMetrics():
+            r = okOrSkip(m.tool("broker_metrics", match="batch_create"))
+            assert r["metrics"].get("ngsild_batch_create_total", 0) >= 1, r     # the seed is one batch
+        check("broker_metrics: match", brokerMetrics)
+
+        def indexes():
+            r = okOrSkip(m.tool("list_indexes"))
+            assert "indexes" in r and "historyIndexes" in r, r
+        check("list_indexes", indexes)
+
+        def bridgeUnknown():
+            r = m.tool("bridge_inventory", bridge="nope" + RUN)
+            assert r["isError"] is True, r
+        check("bridge_inventory: no such bridge - a tool error", bridgeUnknown)
+
+        def diagnose():
+            sub = f"urn:ngsi-ld:Subscription:mcp{RUN}"
+            status = http("POST", "/subscriptions", { "id": sub, "type": "Subscription", "entities": [{ "type": TYPE }], "watchedAttributes": ["speed"],
+                                                          "q": "speed>100", "notification": { "endpoint": { "uri": "http://example.org/alerts" } } })
+            assert status == 201, f"POST /subscriptions answered {status}"
+            try:
+                r = ok(m.tool("diagnose_subscription", id=sub, entityId=f"urn:ngsi-ld:{TYPE}:V4"))
+                c = { (x["check"], i): x for i, x in enumerate(r["checks"]) }
+                byName = lambda n: [x for (k, _), x in c.items() if k == n]
+                assert byName("status")[0]["ok"] is True, r
+                assert byName("endpoint")[0]["ok"] is False and "placeholder" in byName("endpoint")[0]["detail"], r
+                assert byName("filters")[0]["ok"] is True and ": 1 entity match" in byName("filters")[0]["detail"], r
+                assert byName("entity.selected")[0]["ok"] is True, r
+                assert byName("entity.filters")[0]["ok"] is True, r
+                w = byName("entity.watchedAttribute")[0]
+                if "last changed" in w["detail"]:
+                    assert w["ok"] is False and "before the subscription existed" in w["detail"], w
+                r = m.tool("diagnose_subscription", id=sub + "x")
+                assert r["isError"] is True and "no subscription" in r["structuredContent"]["error"], r
+            finally:
+                http("DELETE", f"/subscriptions/{sub}")
+        check("diagnose_subscription: placeholder endpoint, one match, the entity changed before it existed", diagnose)
+
+        def docs():
+            import os
+            d = Mcp("--docs", os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs"))
+            d.call("initialize", { "protocolVersion": "2025-06-18", "capabilities": {} })
+            names = [t["name"] for t in d.call("tools/list")["result"]["tools"]]
+            assert names[-2:] == ["search_docs", "read_doc"], names
+            r = ok(d.tool("search_docs", query="declared index slow"))
+            assert r["sections"][0]["file"] in ("kb/notes.md", "guide.md"), r
+            files = { s["file"] for s in r["sections"] }
+            assert files == { "kb/notes.md", "guide.md" }, r
+            r = ok(d.tool("read_doc"))
+            assert r["files"] == ["guide.md", "kb/notes.md"], r
+            r = ok(d.tool("read_doc", file="guide"))
+            assert r["sections"] == ["The guide", "  Indexes", "    Building one", "  Memory"], r      # the code block's # is no heading
+            r = ok(d.tool("read_doc", file="guide.md", section="indexes"))
+            assert "Building one" in r["text"] and "Memory" not in r["text"] and r["path"] == "The guide > Indexes", r
+            r = d.tool("read_doc", file="nope.md")
+            assert r["isError"] is True, r
+            r = d.tool("search_docs", query="the")
+            assert r["isError"] is True, r
+        check("search_docs, read_doc: --docs directories, sections, subsections, a code block's #", docs)
+
+        def noDocs():
+            names = [t["name"] for t in m.call("tools/list")["result"]["tools"]]
+            assert "search_docs" not in names, names
+        check("no --docs: no documentation tools", noDocs)
 
         def rpcErrors():
             a = m.call("tools/call", { "name": "nope", "arguments": {} })

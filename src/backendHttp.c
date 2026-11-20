@@ -51,7 +51,8 @@ static bool httpRequest(CorAlloc* allocP, CorRestVerb verb, const char* path, co
 
   strInit(&url, allocP, 512);
   strAdd(&url, mcpSession.broker);
-  strAdd(&url, "/ngsi-ld/v1");
+  if (strncmp(path, "/admin/", 7) != 0)          // the broker's own admin API is beside NGSI-LD, not under it
+    strAdd(&url, "/ngsi-ld/v1");
   strAdd(&url, path);
   if ((query != NULL) && (query[0] != 0))
   {

@@ -29,7 +29,7 @@ endif
 
 CFLAGS      = $(OPT) -Wall -Werror -Wundef -Wno-format-truncation -fstack-protector-all -I$(COR_LIBS) -MMD -MP $(EXTRA_CFLAGS)
 
-SOURCES     = src/corMcp.c src/rpc.c src/tools.c src/shape.c src/backendHttp.c src/str.c
+SOURCES     = src/corMcp.c src/rpc.c src/tools.c src/shape.c src/backendHttp.c src/str.c src/brokerTools.c src/docs.c
 OBJDIR      = obj/$(BUILD)
 OBJECTS     = $(SOURCES:src/%.c=$(OBJDIR)/%.o)
 DEPS        = $(OBJECTS:.o=.d)

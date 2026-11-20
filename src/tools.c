@@ -661,6 +661,18 @@ static CorNode* queryRegistrations(Call* cP)
 
 
 
+// The broker tools (brokerTools.c) - their arguments as they came
+static CorNode* brokerStatusT(Call* cP)          { return brokerStatus(cP->allocP, cP->argsP); }
+static CorNode* brokerConfigT(Call* cP)          { return brokerConfig(cP->allocP, cP->argsP); }
+static CorNode* brokerMetricsT(Call* cP)         { return brokerMetrics(cP->allocP, cP->argsP); }
+static CorNode* listIndexesT(Call* cP)           { return listIndexes(cP->allocP, cP->argsP); }
+static CorNode* bridgeInventoryT(Call* cP)       { return bridgeInventory(cP->allocP, cP->argsP); }
+static CorNode* diagnoseSubscriptionT(Call* cP)  { return diagnoseSubscription(cP->allocP, cP->argsP); }
+static CorNode* searchDocsT(Call* cP)            { return searchDocs(cP->allocP, cP->argsP); }
+static CorNode* readDocT(Call* cP)               { return readDoc(cP->allocP, cP->argsP); }
+
+
+
 // -----------------------------------------------------------------------------
 //
 // Tool - the table tools/list renders and tools/call dispatches on
@@ -763,6 +775,80 @@ static const Tool tools[] =
       "\"csf\": { \"type\": \"string\", \"description\": \"Context source filter, e.g. mode==\\\"inclusive\\\"\" },"
       PAGE_PROPERTIES " } }",
     queryRegistrations
+  },
+  {
+    "broker_status", "Is the broker all right?",
+    "The broker itself, in one call: its version, health, tenants and plugins, memory against its budget, requests "
+    "and errors, notifications sent and failed, forwarding - and 'findings': what needs attention, worst first. "
+    "For \"is my broker OK\", \"why is it slow\", \"what version is it\". The counters are since the broker started. "
+    "Needs the broker's admin API (coraine); the answer says when it is not there.",
+    "{ \"type\": \"object\", \"properties\": {} }",
+    brokerStatusT
+  },
+  {
+    "broker_config", "Configuration",
+    "The broker's settings in effect, each with its value, default, where it came from (default, command line, "
+    "environment, file), its environment variable and what it does. Without arguments: only the ones not at their "
+    "default - what this broker does differently. 'match': the options whose name or description has this text (e.g. "
+    "\"memory\", \"tls\", \"port\"); 'all': true for every option. Secrets are never shown.",
+    "{ \"type\": \"object\", \"properties\": { "
+      "\"match\": { \"type\": \"string\", \"description\": \"Text in the option's name or description, e.g. memory\" }, "
+      "\"all\": { \"type\": \"boolean\", \"description\": \"Every option, defaults included\" } } }",
+    brokerConfigT
+  },
+  {
+    "diagnose_subscription", "Why (not) notified?",
+    "Why a subscription does or does not notify: its status and expiry, its endpoint, its delivery so far (times "
+    "sent and failed, the last failure and why), whether any entity matches its entities, q, scopeQ, geoQ and "
+    "watched attributes now, its triggers and throttling. With 'entityId': whether that entity is selected and "
+    "matches, and whether its watched attributes changed after the subscription was made. Each check has ok "
+    "true, false (a reason it does not notify) or null (to know). One call - no need to query the parts yourself.",
+    "{ \"type\": \"object\", \"properties\": { "
+      "\"id\": { \"type\": \"string\", \"description\": \"The subscription's id, as list_subscriptions shows it\" }, "
+      "\"entityId\": { \"type\": \"string\", \"description\": \"An entity the user expected a notification about\" } }, "
+      "\"required\": [\"id\"] }",
+    diagnoseSubscriptionT
+  },
+  {
+    "broker_metrics", "Counters",
+    "The broker's Prometheus counters and gauges, summed over their labels; 'match' keeps the names that contain "
+    "it (e.g. \"latency\", \"subscription\", \"memory\", \"error\"). For the questions broker_status does not answer.",
+    "{ \"type\": \"object\", \"properties\": { \"match\": { \"type\": \"string\", \"description\": \"Text in the metric name\" } } }",
+    brokerMetricsT
+  },
+  {
+    "list_indexes", "Indexes",
+    "The database indexes the broker has added: for the current state, and for history (TRoE). A query on an "
+    "attribute without an index reads every entity of its type - the reason a query is slow on a big tenant.",
+    "{ \"type\": \"object\", \"properties\": {} }",
+    listIndexesT
+  },
+  {
+    "bridge_inventory", "Bridge inventory",
+    "What a bridge (a device-protocol plugin: mqtt, modbus, ...) holds: its devices, their Channels and how each "
+    "maps to an entity attribute. For \"why do this device's values not arrive\". broker_status lists the plugins.",
+    "{ \"type\": \"object\", \"properties\": { \"bridge\": { \"type\": \"string\", \"description\": \"The bridge's name\" } }, \"required\": [\"bridge\"] }",
+    bridgeInventoryT
+  },
+  {
+    "search_docs", "Search the documentation",
+    "The broker's documentation and the knowledge base - how to install, configure, build, tune and troubleshoot "
+    "it, every option, measured sizes and performance, what each build feature costs and saves. The sections that "
+    "best match the words, each with its file, path and a matching line. Use the words the docs would use: an "
+    "option's name (dbValueIndexes), a feature (COR_FEATURE_GEOQ), an endpoint (/admin/indexes), an error's title. "
+    "Then read_doc for the text. Answer from what you read, and name the file and section.",
+    "{ \"type\": \"object\", \"properties\": { \"query\": { \"type\": \"string\", \"description\": \"The words to look for\" } }, \"required\": [\"query\"] }",
+    searchDocsT
+  },
+  {
+    "read_doc", "Read the documentation",
+    "A section of a documentation file, with its subsections - { file, section } as search_docs gave them; a long "
+    "one comes in parts (nextOffset: pass it as offset). { file } alone: the file's headings. No arguments: the files.",
+    "{ \"type\": \"object\", \"properties\": { "
+      "\"file\": { \"type\": \"string\", \"description\": \"e.g. performance.md\" }, "
+      "\"section\": { \"type\": \"string\", \"description\": \"The heading, or a part of it\" }, "
+      "\"offset\": { \"type\": \"integer\", \"minimum\": 0, \"description\": \"Where to go on in a long section (nextOffset)\" } } }",
+    readDocT
   }
 };
 
@@ -788,6 +874,8 @@ CorNode* toolsList(CorAlloc* allocP)
     CorNode* schemaP = corJsonParse(&json, corAllocStrdup(allocP, tools[ix].inputSchema));
     if (schemaP == NULL)                         // a broken schema is a build error - tests catch it
       continue;
+    if ((mcpSession.docs == NULL) && ((tools[ix].call == searchDocsT) || (tools[ix].call == readDocT)))
+      continue;                                  // no --docs: no documentation tools
 
     schemaP->name = (char*) "inputSchema";
 

@@ -1,6 +1,7 @@
 # corMcp - an MCP server for NGSI-LD brokers
 
-corMcp gives an AI model read access to an NGSI-LD context broker (ETSI TS 104 175) through the
+corMcp gives an AI model read access to an NGSI-LD context broker (ETSI TS 104 175) - its data and, on coraine,
+the broker itself: health, configuration, why a subscription does not notify - through the
 [Model Context Protocol](https://modelcontextprotocol.io). The model asks in tools - "the vehicles faster
 than 90 km/h near Sol" - and corMcp makes the NGSI-LD requests: `GET /entities?type=Vehicle&q=speed>90&georel=...`.
 
@@ -53,6 +54,8 @@ claude mcp add ngsild -- corMcp --broker http://localhost:1026
 
 All read-only.
 
+### The data
+
 | Tool | NGSI-LD | Arguments (required in bold) |
 |---|---|---|
 | `list_types` | `GET /types?details=true` | - |
@@ -63,6 +66,27 @@ All read-only.
 | `temporal` | `GET /temporal/entities[/{id}]` | **timerel** (`before`, `after`, `between`), **timeAt**, endTimeAt (**required with `between`**), id, type, ids, idPattern, q, scopeQ, geoQ, csf, attrs, timeproperty (default `observedAt`), lastN, aggrMethods, aggrPeriodDuration, pick, omit, datasetId, lang, format, limit, offset |
 | `list_subscriptions` | `GET /subscriptions` | limit, offset |
 | `query_registrations` | `GET /csourceRegistrations` (NGSI-LD wants at least one filter, § 5.10.2.4) | type, ids, idPattern, attrs, q, csf, limit, offset |
+
+### The broker itself
+
+About the broker, not its data - read from coraine's admin API (`/admin/...`, beside `/ngsi-ld/v1`). The
+user's token must be allowed there; another broker answers 404, and the tool says the admin API is not there.
+
+| Tool | Reads | Arguments (required in bold) |
+|---|---|---|
+| `broker_status` | `/admin/version`, `/admin/health`, `/admin/tenants`, `/admin/plugins`, `/admin/metrics` | - |
+| `broker_config` | `/admin/config` - by default only the options not at their default; secrets never shown | match, all |
+| `diagnose_subscription` | `GET /subscriptions/{id}?options=sysAttrs`, counts of `GET /entities`, the entity with sysAttrs | **id**, entityId |
+| `broker_metrics` | `/admin/metrics`, summed over the labels | match |
+| `list_indexes` | `/admin/indexes`, `/admin/troeIndexes` | - |
+| `bridge_inventory` | `/admin/bridges/{bridge}/inventory` | **bridge** |
+
+`broker_status` ends in `findings`: what needs attention (5xx errors, memory near its budget, the store
+paused, failed notifications or forwards), or "nothing found". `diagnose_subscription` answers with
+`checks`, each `ok` true, false (a reason it does not notify) or null (to know): status and expiry, the
+endpoint (a placeholder domain, `localhost`), the delivery so far, whether any entity matches its entities,
+q, scopeQ, geoQ and watched attributes now, its triggers and throttling - and with `entityId`, whether that
+entity is selected and matches, and whether its watched attributes changed after the subscription was made.
 
 `geoQ` is an object: **georel**, **geometry**, **coordinates**, and geoproperty (default `location`).
 A required argument that is missing is a tool error before anything is sent: `'timeAt' is required (a string)`.
