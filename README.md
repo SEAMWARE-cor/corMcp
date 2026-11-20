@@ -23,7 +23,7 @@ make install          # /usr/local/bin/corMcp (PREFIX=..., DESTDIR=...)
 ## Run
 
 ```
-corMcp --broker http://localhost:1026 [--tenant T] [--context URL] [--token-env VAR] [--limit-max N]
+corMcp --broker http://localhost:1026 [--tenant T] [--context URL] [--token-env VAR] [--limit-max N] [--docs dir:file.md]
 ```
 
 | Option | Environment | |
@@ -32,6 +32,9 @@ corMcp --broker http://localhost:1026 [--tenant T] [--context URL] [--token-env 
 | `--tenant`, `-t` | `CORMCP_TENANT` | the tenant every request goes to (`NGSILD-Tenant`); default: the broker's default tenant |
 | `--context`, `-ctx` | `CORMCP_CONTEXT` | the @context URL the short names (`Vehicle`, `speed`) expand with, sent as `Link`; default: the core context |
 | `--token-env`, `-te` | `CORMCP_TOKEN_ENV` | the environment variable holding a bearer token, sent as `Authorization` - never a command-line argument |
+| `--docs`, `-d` | `CORMCP_DOCS` | Markdown the model may search and read (`search_docs`, `read_doc`): directories (their `.md` files, and one level of subdirectories) and files, `:`-separated - coraine's `doc/`, its `CHANGELOG.md` and `changelog.d/`, a knowledge base. Without it, the two tools are not listed |
+| `--rules-tenant`, `-rt` | `CORMCP_RULES_TENANT` | the tenant corCep's Rule entities are in - `list_rules` reads them there; default `cep` |
+| `--cep` | `CORMCP_CEP` | corCep's base URL (`http://host:7602`): `dry_run_rule` replays rules on its `POST /dry-run`, with the user's token (corCep `--jwks`, the editor role). Without it, `dry_run_rule` says it cannot |
 | `--limit-max`, `-lm` | `CORMCP_LIMIT_MAX` | the largest `limit` a tool call may ask for: 1-1000, default 100 (another value: corMcp does not start); a tool call asking for more gets this many |
 
 An option on the command line wins over its environment variable; an environment variable set to a value
@@ -80,6 +83,9 @@ user's token must be allowed there; another broker answers 404, and the tool say
 | `broker_metrics` | `/admin/metrics`, summed over the labels | match |
 | `list_indexes` | `/admin/indexes`, `/admin/troeIndexes` | - |
 | `bridge_inventory` | `/admin/bridges/{bridge}/inventory` | **bridge** |
+| `read_log` | `/admin/log/lines` (coraine 0.8+: the recent log the broker keeps in memory) | lines, types (`EW`), match, since |
+| `security_review` | `/admin/config` - who can do what: auth, HTTPS, CORS, the admin API, the other ports, the databases' credentials | - |
+| `diagnose_device` | `GET /bridges`, `/channels`, `/dataChannels`, the entity with sysAttrs, the bridge's lines of `/admin/log/lines` | **entity**, attribute |
 
 `broker_status` ends in `findings`: what needs attention (5xx errors, memory near its budget, the store
 paused, failed notifications or forwards), or "nothing found". `diagnose_subscription` answers with
@@ -87,6 +93,26 @@ paused, failed notifications or forwards), or "nothing found". `diagnose_subscri
 endpoint (a placeholder domain, `localhost`), the delivery so far, whether any entity matches its entities,
 q, scopeQ, geoQ and watched attributes now, its triggers and throttling - and with `entityId`, whether that
 entity is selected and matches, and whether its watched attributes changed after the subscription was made.
+
+`security_review` answers with `findings`, each with a severity (`high`, `medium`, `info`, `ok`), why and the
+fix, and `notChecked`: what a configuration cannot show (the network around the broker, the identity provider).
+`diagnose_device` answers with `checks` as `diagnose_subscription` does: a Bridge not available, no Channel
+mapping the entity, a Channel dormant (and why, in the bridge's words), no sample in since the start, payloads
+refused, an outbound-only Channel, the attribute still `"uninitialized"` - and the bridge's errors in the log.
+
+### Rules, documentation and models
+
+| Tool | Reads | Arguments (required in bold) |
+|---|---|---|
+| `search_docs` | the `--docs` Markdown, cut at its headings: the sections that best match the words, with a matching line | **query** |
+| `read_doc` | a section with its subsections (in parts when long); a file's headings; the files | file, section, offset |
+| `list_rules` | corCep's Rule entities (`GET /entities?type=Rule&options=keyValues` in `--rules-tenant`): when, then, else, enabled, and corCep's statistics - fired, firedAt, lastError | match |
+| `dry_run_rule` | corCep's `POST /dry-run` (`--cep`): what rules would do with events made up for them - nothing written | **rules**, **events**, entities, start, for |
+| `smart_data_model` | FIWARE's Smart Data Models on GitHub (`raw.githubusercontent.com/smart-data-models`): the official list searched; a model's description, attributes, required ones and normalized NGSI-LD example | search, model, subject |
+
+`list_rules` is the one tool that reads another tenant than the session's: corCep's rules tenant, named by
+the user's configuration (`--rules-tenant`), never by the model. `dry_run_rule` and `smart_data_model` reach
+beyond the broker: corCep, with the user's token; a public file on GitHub, nothing of the user's in it.
 
 `geoQ` is an object: **georel**, **geometry**, **coordinates**, and geoproperty (default `location`).
 A required argument that is missing is a tool error before anything is sent: `'timeAt' is required (a string)`.

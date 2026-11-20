@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // The documentation tools - search_docs and read_doc, over the Markdown files of the directories --docs names
-// (dir1:dir2: coraine's doc/, a knowledge base). A file is cut in sections at its headings; a search ranks the
+// (dir1:dir2: coraine's doc/, a knowledge base), and the Markdown files it names (a CHANGELOG.md). A file is cut in sections at its headings; a search ranks the
 // sections by the words of the question (in the heading weighs more, every word found weighs most), and
 // read_doc returns one section with its subsections - so the model reads what it needs, not 240,000 words.
 //
@@ -181,6 +181,29 @@ static void sectionsOf(int fx)
 //
 // docsLoad - the Markdown files of every --docs directory (and one level of subdirectories)
 //
+static void fileLoad(const char* full, const char* name, const char* dir)
+{
+  int   len;
+  char* text = fileRead(full, &len);
+  if ((text == NULL) || (nFiles >= FILES_MAX))
+  {
+    free(text);
+    return;
+  }
+
+  DocFile* dP = &files[nFiles];
+  dP->name  = strdup(name);
+  dP->dir   = strdup(dir);
+  dP->text  = text;
+  dP->len   = len;
+  dP->lower = malloc(len + 1);
+  for (int ix = 0; ix <= len; ix++)
+    dP->lower[ix] = tolower((unsigned char) text[ix]);
+
+  sectionsOf(nFiles);
+  ++nFiles;
+}
+
 static void dirLoad(const char* dir, const char* sub)
 {
   char path[2048];
@@ -213,24 +236,9 @@ static void dirLoad(const char* dir, const char* sub)
     if ((nlen < 4) || (strcmp(&eP->d_name[nlen - 3], ".md") != 0))
       continue;
 
-    int   len;
-    char* text = fileRead(full, &len);
-    if (text == NULL)
-      continue;
-
-    DocFile* dP = &files[nFiles];
-    char     name[1024];
+    char name[1024];
     snprintf(name, sizeof(name), "%s%s%s", (sub != NULL) ? sub : "", (sub != NULL) ? "/" : "", eP->d_name);
-    dP->name  = strdup(name);
-    dP->dir   = strdup(dir);
-    dP->text  = text;
-    dP->len   = len;
-    dP->lower = malloc(len + 1);
-    for (int ix = 0; ix <= len; ix++)
-      dP->lower[ix] = tolower((unsigned char) text[ix]);
-
-    sectionsOf(nFiles);
-    ++nFiles;
+    fileLoad(full, name, dir);
   }
   closedir(dirP);
 }
@@ -245,8 +253,33 @@ static void docsLoad(void)
   char* save = NULL;
   for (char* d = strtok_r(dirs, ":", &save); d != NULL; d = strtok_r(NULL, ":", &save))
   {
-    int before = nFiles;
-    dirLoad(d, NULL);
+    int         before = nFiles;
+    struct stat st;
+    int         dlen   = strlen(d);
+
+    if ((stat(d, &st) == 0) && S_ISREG(st.st_mode) && (dlen > 3) && (strcmp(&d[dlen - 3], ".md") == 0))
+    {
+      //
+      // A file: named with its directory - coraine/CHANGELOG.md, corCep/README.md - one README is not another
+      //
+      const char* base = strrchr(d, '/');
+      const char* name = d;
+      if (base != NULL)
+      {
+        name = base + 1;
+        for (const char* p = base - 1; p >= d; p--)
+        {
+          if ((*p == '/') || (p == d))
+          {
+            name = (*p == '/') ? p + 1 : p;
+            break;
+          }
+        }
+      }
+      fileLoad(d, name, d);
+    }
+    else
+      dirLoad(d, NULL);
 
     //
     // A name another directory has already: dir-qualified, so read_doc can tell them apart

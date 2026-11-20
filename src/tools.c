@@ -668,6 +668,12 @@ static CorNode* brokerMetricsT(Call* cP)         { return brokerMetrics(cP->allo
 static CorNode* listIndexesT(Call* cP)           { return listIndexes(cP->allocP, cP->argsP); }
 static CorNode* bridgeInventoryT(Call* cP)       { return bridgeInventory(cP->allocP, cP->argsP); }
 static CorNode* diagnoseSubscriptionT(Call* cP)  { return diagnoseSubscription(cP->allocP, cP->argsP); }
+static CorNode* readLogT(Call* cP)               { return readLog(cP->allocP, cP->argsP); }
+static CorNode* securityReviewT(Call* cP)        { return securityReview(cP->allocP, cP->argsP); }
+static CorNode* diagnoseDeviceT(Call* cP)        { return diagnoseDevice(cP->allocP, cP->argsP); }
+static CorNode* smartDataModelT(Call* cP)        { return smartDataModel(cP->allocP, cP->argsP); }
+static CorNode* listRulesT(Call* cP)             { return listRules(cP->allocP, cP->argsP); }
+static CorNode* dryRunRuleT(Call* cP)            { return dryRunRule(cP->allocP, cP->argsP); }
 static CorNode* searchDocsT(Call* cP)            { return searchDocs(cP->allocP, cP->argsP); }
 static CorNode* readDocT(Call* cP)               { return readDoc(cP->allocP, cP->argsP); }
 
@@ -829,6 +835,77 @@ static const Tool tools[] =
     "maps to an entity attribute. For \"why do this device's values not arrive\". broker_status lists the plugins.",
     "{ \"type\": \"object\", \"properties\": { \"bridge\": { \"type\": \"string\", \"description\": \"The bridge's name\" } }, \"required\": [\"bridge\"] }",
     bridgeInventoryT
+  },
+  {
+    "read_log", "Read the broker's log",
+    "The broker's recent log (coraine 0.8+: GET /admin/log/lines, the lines it keeps in memory), oldest first, "
+    "each with its UTC time and type - E error, W warning, I info, V verbose, T trace. For \"what went wrong\", "
+    "\"why was this refused\", \"is the bridge connected\": types EW first, match a text (an entity id, a "
+    "bridge's name, an endpoint), since a time. A request the broker refused logs its status and reason. Info "
+    "and verbose lines are there only when the broker logs them (its log levels).",
+    "{ \"type\": \"object\", \"properties\": { "
+      "\"lines\": { \"type\": \"integer\", \"minimum\": 1, \"maximum\": 500, \"description\": \"The last N lines that match (50)\" }, "
+      "\"types\": { \"type\": \"string\", \"description\": \"The line types, letters: EW for errors and warnings\" }, "
+      "\"match\": { \"type\": \"string\", \"description\": \"A text the line contains\" }, "
+      "\"since\": { \"type\": \"string\", \"description\": \"A UTC time: 2026-11-20T12:00:00Z\" } } }",
+    readLogT
+  },
+  {
+    "diagnose_device", "Why a device's values do not arrive",
+    "One call for \"my sensor's values don't show up\": the Bridges (a plugin not loaded), the Channels that map "
+    "the entity - their status and its reason, samples in since the start, payloads refused, the direction - the "
+    "attribute's value (\"uninitialized\": not one sample yet) and when it last changed, and the bridge's errors "
+    "and warnings in the log. Give the entity's id, and the attribute when you know it.",
+    "{ \"type\": \"object\", \"properties\": { "
+      "\"entity\": { \"type\": \"string\", \"description\": \"The entity the device's values should reach\" }, "
+      "\"attribute\": { \"type\": \"string\", \"description\": \"Its attribute (optional)\" } }, \"required\": [\"entity\"] }",
+    diagnoseDeviceT
+  },
+  {
+    "security_review", "Review the broker's security",
+    "Who can do what with this broker, from its configuration (coraine's /admin/config): auth, HTTPS, CORS, "
+    "the admin API, the other ports (cor://, the policy API, health), the databases' credentials, passwords "
+    "visible on the command line. Findings by severity (high, medium, info, ok), each with why and the fix, "
+    "and what it cannot see (the network around it). For \"is my broker secure\", \"can I expose it\", "
+    "\"who can change my data\". Then search_docs (authorization) for the details of a fix.",
+    "{ \"type\": \"object\", \"properties\": {} }",
+    securityReviewT
+  },
+  {
+    "list_rules", "List the automation rules",
+    "corCep's rules - when something happens (an attribute updated, a pattern of events, a schedule), do something "
+    "(set, toggle, step, create, delete entities). The Rule entities of the rules tenant, keyValues: when, then, "
+    "else, enabled, and corCep's statistics - fired, firedAt, lastError. For \"which rules are there\", \"why did "
+    "my rule not fire\", \"what turns this light on\". match: a text of the id or name.",
+    "{ \"type\": \"object\", \"properties\": { \"match\": { \"type\": \"string\", \"description\": \"A text of the rule's id or name\" } } }",
+    listRulesT
+  },
+  {
+    "dry_run_rule", "Try a rule out",
+    "Replay rules against events made up for them, on corCep's POST /dry-run - what would fire, when, on which "
+    "entities, and what an if stopped. Nothing is written. Use it on every rule you write before c³'s save_rule, "
+    "and to explain an existing one. rules: Rule entities, keyValues, when/then/else as {\"json\": ...} (list_rules "
+    "gives them so); events: [{at (ms or PT1S), entity, type, attribute, value}]; entities: the state where/if read; "
+    "start: the clock at 0 (for cron, at); for: how long. The rule language: search_docs \"corCep rule\".",
+    "{ \"type\": \"object\", \"properties\": { "
+      "\"rules\": { \"type\": \"array\", \"items\": { \"type\": \"object\" } }, "
+      "\"events\": { \"type\": \"array\", \"items\": { \"type\": \"object\" } }, "
+      "\"entities\": { \"type\": \"array\", \"items\": { \"type\": \"object\" } }, "
+      "\"start\": { \"type\": \"string\" }, \"for\": { \"type\": \"string\" } }, \"required\": [\"rules\", \"events\"] }",
+    dryRunRuleT
+  },
+  {
+    "smart_data_model", "FIWARE Smart Data Models",
+    "The published data models (smartdatamodels.org, read from their GitHub repositories) - to model the user's "
+    "data on one instead of inventing a shape, or to check existing entities against one. { search }: the models "
+    "whose name, subject or domain has the text (WeatherObserved, Parking, Building, Device, AirQuality...); no "
+    "argument: the subjects. { model } (and subject when two have it): its description, its attributes with "
+    "theirs, the required ones, and a normalized NGSI-LD example with the model's @context.",
+    "{ \"type\": \"object\", \"properties\": { "
+      "\"search\": { \"type\": \"string\", \"description\": \"A word of the model's name, subject or domain\" }, "
+      "\"model\": { \"type\": \"string\", \"description\": \"A model's name: OffStreetParking\" }, "
+      "\"subject\": { \"type\": \"string\", \"description\": \"Its repository, when two have the name: dataModel.Parking\" } } }",
+    smartDataModelT
   },
   {
     "search_docs", "Search the documentation",
