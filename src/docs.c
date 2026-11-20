@@ -259,8 +259,24 @@ static void docsLoad(void)
 
     if ((stat(d, &st) == 0) && S_ISREG(st.st_mode) && (dlen > 3) && (strcmp(&d[dlen - 3], ".md") == 0))
     {
+      //
+      // A file: named with its directory - coraine/CHANGELOG.md, corCep/README.md - one README is not another
+      //
       const char* base = strrchr(d, '/');
-      fileLoad(d, (base != NULL) ? base + 1 : d, d);    // a file: CHANGELOG.md
+      const char* name = d;
+      if (base != NULL)
+      {
+        name = base + 1;
+        for (const char* p = base - 1; p >= d; p--)
+        {
+          if ((*p == '/') || (p == d))
+          {
+            name = (*p == '/') ? p + 1 : p;
+            break;
+          }
+        }
+      }
+      fileLoad(d, name, d);
     }
     else
       dirLoad(d, NULL);
