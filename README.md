@@ -33,6 +33,8 @@ corMcp --broker http://localhost:1026 [--tenant T] [--context URL] [--token-env 
 | `--context`, `-ctx` | `CORMCP_CONTEXT` | the @context URL the short names (`Vehicle`, `speed`) expand with, sent as `Link`; default: the core context |
 | `--token-env`, `-te` | `CORMCP_TOKEN_ENV` | the environment variable holding a bearer token, sent as `Authorization` - never a command-line argument |
 | `--docs`, `-d` | `CORMCP_DOCS` | Markdown the model may search and read (`search_docs`, `read_doc`): directories (their `.md` files, and one level of subdirectories) and files, `:`-separated - coraine's `doc/`, its `CHANGELOG.md` and `changelog.d/`, a knowledge base. Without it, the two tools are not listed |
+| `--rules-tenant`, `-rt` | `CORMCP_RULES_TENANT` | the tenant corCep's Rule entities are in - `list_rules` reads them there; default `cep` |
+| `--cep` | `CORMCP_CEP` | corCep's base URL (`http://host:7602`): `dry_run_rule` replays rules on its `POST /dry-run`, with the user's token (corCep `--jwks`, the editor role). Without it, `dry_run_rule` says it cannot |
 | `--limit-max`, `-lm` | `CORMCP_LIMIT_MAX` | the largest `limit` a tool call may ask for: 1-1000, default 100 (another value: corMcp does not start); a tool call asking for more gets this many |
 
 An option on the command line wins over its environment variable; an environment variable set to a value
@@ -98,16 +100,19 @@ fix, and `notChecked`: what a configuration cannot show (the network around the 
 mapping the entity, a Channel dormant (and why, in the bridge's words), no sample in since the start, payloads
 refused, an outbound-only Channel, the attribute still `"uninitialized"` - and the bridge's errors in the log.
 
-### Documentation and models
+### Rules, documentation and models
 
 | Tool | Reads | Arguments (required in bold) |
 |---|---|---|
 | `search_docs` | the `--docs` Markdown, cut at its headings: the sections that best match the words, with a matching line | **query** |
 | `read_doc` | a section with its subsections (in parts when long); a file's headings; the files | file, section, offset |
+| `list_rules` | corCep's Rule entities (`GET /entities?type=Rule&options=keyValues` in `--rules-tenant`): when, then, else, enabled, and corCep's statistics - fired, firedAt, lastError | match |
+| `dry_run_rule` | corCep's `POST /dry-run` (`--cep`): what rules would do with events made up for them - nothing written | **rules**, **events**, entities, start, for |
 | `smart_data_model` | FIWARE's Smart Data Models on GitHub (`raw.githubusercontent.com/smart-data-models`): the official list searched; a model's description, attributes, required ones and normalized NGSI-LD example | search, model, subject |
 
-`smart_data_model` is the one tool that reaches beyond the broker: a GET of a public file, nothing of the
-user's in it.
+`list_rules` is the one tool that reads another tenant than the session's: corCep's rules tenant, named by
+the user's configuration (`--rules-tenant`), never by the model. `dry_run_rule` and `smart_data_model` reach
+beyond the broker: corCep, with the user's token; a public file on GitHub, nothing of the user's in it.
 
 `geoQ` is an object: **georel**, **geometry**, **coordinates**, and geoproperty (default `location`).
 A required argument that is missing is a tool error before anything is sent: `'timeAt' is required (a string)`.

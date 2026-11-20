@@ -672,6 +672,8 @@ static CorNode* readLogT(Call* cP)               { return readLog(cP->allocP, cP
 static CorNode* securityReviewT(Call* cP)        { return securityReview(cP->allocP, cP->argsP); }
 static CorNode* diagnoseDeviceT(Call* cP)        { return diagnoseDevice(cP->allocP, cP->argsP); }
 static CorNode* smartDataModelT(Call* cP)        { return smartDataModel(cP->allocP, cP->argsP); }
+static CorNode* listRulesT(Call* cP)             { return listRules(cP->allocP, cP->argsP); }
+static CorNode* dryRunRuleT(Call* cP)            { return dryRunRule(cP->allocP, cP->argsP); }
 static CorNode* searchDocsT(Call* cP)            { return searchDocs(cP->allocP, cP->argsP); }
 static CorNode* readDocT(Call* cP)               { return readDoc(cP->allocP, cP->argsP); }
 
@@ -868,6 +870,29 @@ static const Tool tools[] =
     "\"who can change my data\". Then search_docs (authorization) for the details of a fix.",
     "{ \"type\": \"object\", \"properties\": {} }",
     securityReviewT
+  },
+  {
+    "list_rules", "List the automation rules",
+    "corCep's rules - when something happens (an attribute updated, a pattern of events, a schedule), do something "
+    "(set, toggle, step, create, delete entities). The Rule entities of the rules tenant, keyValues: when, then, "
+    "else, enabled, and corCep's statistics - fired, firedAt, lastError. For \"which rules are there\", \"why did "
+    "my rule not fire\", \"what turns this light on\". match: a text of the id or name.",
+    "{ \"type\": \"object\", \"properties\": { \"match\": { \"type\": \"string\", \"description\": \"A text of the rule's id or name\" } } }",
+    listRulesT
+  },
+  {
+    "dry_run_rule", "Try a rule out",
+    "Replay rules against events made up for them, on corCep's POST /dry-run - what would fire, when, on which "
+    "entities, and what an if stopped. Nothing is written. Use it on every rule you write before c³'s save_rule, "
+    "and to explain an existing one. rules: Rule entities, keyValues, when/then/else as {\"json\": ...} (list_rules "
+    "gives them so); events: [{at (ms or PT1S), entity, type, attribute, value}]; entities: the state where/if read; "
+    "start: the clock at 0 (for cron, at); for: how long. The rule language: search_docs \"corCep rule\".",
+    "{ \"type\": \"object\", \"properties\": { "
+      "\"rules\": { \"type\": \"array\", \"items\": { \"type\": \"object\" } }, "
+      "\"events\": { \"type\": \"array\", \"items\": { \"type\": \"object\" } }, "
+      "\"entities\": { \"type\": \"array\", \"items\": { \"type\": \"object\" } }, "
+      "\"start\": { \"type\": \"string\" }, \"for\": { \"type\": \"string\" } }, \"required\": [\"rules\", \"events\"] }",
+    dryRunRuleT
   },
   {
     "smart_data_model", "FIWARE Smart Data Models",

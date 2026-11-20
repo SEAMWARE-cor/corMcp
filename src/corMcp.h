@@ -39,6 +39,8 @@ typedef struct McpSession
   const char*  token;                            // the bearer token sent as Authorization, NULL: none
   int          limitMax;                         // the largest 'limit' a tool call may ask for
   const char*  docs;                             // --docs: the Markdown directories search_docs reads (dir1:dir2), NULL: none
+  const char*  rulesTenant;                      // --rules-tenant: the tenant corCep's Rule entities are in (cep)
+  const char*  cep;                              // --cep: corCep's base URL, for its /dry-run; NULL: none
 } McpSession;
 
 extern McpSession mcpSession;
@@ -128,6 +130,10 @@ extern CorNode* diagnoseSubscription(CorAlloc* allocP, CorNode* argsP);
 extern CorNode* readLog(CorAlloc* allocP, CorNode* argsP);
 extern CorNode* securityReview(CorAlloc* allocP, CorNode* argsP);
 extern CorNode* diagnoseDevice(CorAlloc* allocP, CorNode* argsP);
+
+// rules.c - corCep's rules
+extern CorNode* listRules(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* dryRunRule(CorAlloc* allocP, CorNode* argsP);
 
 // sdm.c - FIWARE's Smart Data Models
 extern CorNode* smartDataModel(CorAlloc* allocP, CorNode* argsP);

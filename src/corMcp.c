@@ -35,6 +35,8 @@ static char* contextArg  = NULL;
 static char* tokenEnvArg = NULL;
 static int   limitMaxArg = 100;
 static char* docsArg     = NULL;
+static char* rulesTenantArg = NULL;
+static char* cepArg      = NULL;
 
 
 
@@ -49,6 +51,8 @@ static CorArg options[] =
   { "--context",   "-ctx", CorArgString, &contextArg, CorArgOpt, NULL,     NULL,  NULL,       "the @context URL short names expand with (default: the core context)" },
   { "--token-env", "-te", CorArgString, &tokenEnvArg, CorArgOpt, NULL,     NULL,  NULL,       "the environment variable holding the bearer token sent to the broker" },
   { "--limit-max", "-lm", CorArgInt,    &limitMaxArg, CorArgOpt, _vp 100,  _vp 1, _vp 1000,   "the largest 'limit' a tool call may ask for" },
+  { "--rules-tenant", "-rt", CorArgString, &rulesTenantArg, CorArgOpt, "cep", NULL, NULL,  "the tenant corCep's Rule entities are in - list_rules reads them there (default cep)" },
+  { "--cep",       "-cep", CorArgString, &cepArg,     CorArgOpt, NULL,     NULL,  NULL,       "corCep's base URL (http://host:7602) - dry_run_rule replays rules on its POST /dry-run, with the user's token" },
   { "--docs",      "-d",  CorArgString, &docsArg,     CorArgOpt, NULL,     NULL,  NULL,       "Markdown directories and files the model may search and read (dir1:dir2:CHANGELOG.md) - search_docs, read_doc" },
   CORARGS_END
 };
@@ -86,6 +90,8 @@ int main(int argC, char* argV[])
   mcpSession.token    = NULL;
   mcpSession.limitMax = limitMaxArg;
   mcpSession.docs     = ((docsArg != NULL) && (docsArg[0] != 0)) ? docsArg : NULL;
+  mcpSession.rulesTenant = ((rulesTenantArg != NULL) && (rulesTenantArg[0] != 0)) ? rulesTenantArg : "cep";
+  mcpSession.cep      = ((cepArg != NULL) && (cepArg[0] != 0)) ? cepArg : NULL;
 
   if (tokenEnvArg != NULL)
   {

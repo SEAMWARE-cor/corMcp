@@ -156,12 +156,12 @@ def main():
             names = [t["name"] for t in tools]
             assert names == ["list_types", "list_attributes", "query_entities", "get_entity", "count_entities", "temporal", "list_subscriptions", "query_registrations",
                              "broker_status", "broker_config", "diagnose_subscription", "broker_metrics", "list_indexes", "bridge_inventory",
-                             "read_log", "diagnose_device", "security_review", "smart_data_model"], names
+                             "read_log", "diagnose_device", "security_review", "list_rules", "dry_run_rule", "smart_data_model"], names
             for t in tools:
                 assert t["inputSchema"]["type"] == "object", t["name"]
                 assert t["annotations"]["readOnlyHint"] is True
                 assert len(t["description"]) > 40
-        check("tools/list: eighteen read tools, schemas, annotations", toolsList)
+        check("tools/list: twenty read tools, schemas, annotations", toolsList)
 
         def listTypes():
             types = ok(m.tool("list_types"))["types"]
@@ -342,6 +342,13 @@ def main():
             r = m.tool("diagnose_device")
             assert r["isError"] is True, r
         check("diagnose_device: an entity nothing maps; the entity required", device)
+
+        def rules():
+            r = ok(m.tool("list_rules"))
+            assert "rules" in r, r
+            r = m.tool("dry_run_rule", rules=[], events=[])
+            assert r["isError"] is True and "--cep" in json.dumps(r), r                  # no corCep given: said so
+        check("list_rules; dry_run_rule without --cep", rules)
 
         def sdm():
             r = m.tool("smart_data_model", search="parking")
