@@ -668,6 +668,8 @@ static CorNode* brokerMetricsT(Call* cP)         { return brokerMetrics(cP->allo
 static CorNode* listIndexesT(Call* cP)           { return listIndexes(cP->allocP, cP->argsP); }
 static CorNode* bridgeInventoryT(Call* cP)       { return bridgeInventory(cP->allocP, cP->argsP); }
 static CorNode* diagnoseSubscriptionT(Call* cP)  { return diagnoseSubscription(cP->allocP, cP->argsP); }
+static CorNode* searchDocsT(Call* cP)            { return searchDocs(cP->allocP, cP->argsP); }
+static CorNode* readDocT(Call* cP)               { return readDoc(cP->allocP, cP->argsP); }
 
 
 
@@ -827,6 +829,26 @@ static const Tool tools[] =
     "maps to an entity attribute. For \"why do this device's values not arrive\". broker_status lists the plugins.",
     "{ \"type\": \"object\", \"properties\": { \"bridge\": { \"type\": \"string\", \"description\": \"The bridge's name\" } }, \"required\": [\"bridge\"] }",
     bridgeInventoryT
+  },
+  {
+    "search_docs", "Search the documentation",
+    "The broker's documentation and the knowledge base - how to install, configure, build, tune and troubleshoot "
+    "it, every option, measured sizes and performance, what each build feature costs and saves. The sections that "
+    "best match the words, each with its file, path and a matching line. Use the words the docs would use: an "
+    "option's name (dbValueIndexes), a feature (COR_FEATURE_GEOQ), an endpoint (/admin/indexes), an error's title. "
+    "Then read_doc for the text. Answer from what you read, and name the file and section.",
+    "{ \"type\": \"object\", \"properties\": { \"query\": { \"type\": \"string\", \"description\": \"The words to look for\" } }, \"required\": [\"query\"] }",
+    searchDocsT
+  },
+  {
+    "read_doc", "Read the documentation",
+    "A section of a documentation file, with its subsections - { file, section } as search_docs gave them; a long "
+    "one comes in parts (nextOffset: pass it as offset). { file } alone: the file's headings. No arguments: the files.",
+    "{ \"type\": \"object\", \"properties\": { "
+      "\"file\": { \"type\": \"string\", \"description\": \"e.g. performance.md\" }, "
+      "\"section\": { \"type\": \"string\", \"description\": \"The heading, or a part of it\" }, "
+      "\"offset\": { \"type\": \"integer\", \"minimum\": 0, \"description\": \"Where to go on in a long section (nextOffset)\" } } }",
+    readDocT
   }
 };
 
@@ -852,6 +874,8 @@ CorNode* toolsList(CorAlloc* allocP)
     CorNode* schemaP = corJsonParse(&json, corAllocStrdup(allocP, tools[ix].inputSchema));
     if (schemaP == NULL)                         // a broken schema is a build error - tests catch it
       continue;
+    if ((mcpSession.docs == NULL) && ((tools[ix].call == searchDocsT) || (tools[ix].call == readDocT)))
+      continue;                                  // no --docs: no documentation tools
 
     schemaP->name = (char*) "inputSchema";
 

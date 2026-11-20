@@ -38,6 +38,7 @@ typedef struct McpSession
   const char*  context;                          // the @context URL sent as Link, NULL: the core context
   const char*  token;                            // the bearer token sent as Authorization, NULL: none
   int          limitMax;                         // the largest 'limit' a tool call may ask for
+  const char*  docs;                             // --docs: the Markdown directories search_docs reads (dir1:dir2), NULL: none
 } McpSession;
 
 extern McpSession mcpSession;
@@ -124,6 +125,15 @@ extern CorNode* brokerMetrics(CorAlloc* allocP, CorNode* argsP);
 extern CorNode* listIndexes(CorAlloc* allocP, CorNode* argsP);
 extern CorNode* bridgeInventory(CorAlloc* allocP, CorNode* argsP);
 extern CorNode* diagnoseSubscription(CorAlloc* allocP, CorNode* argsP);
+
+
+
+// -----------------------------------------------------------------------------
+//
+// docs.c - the documentation --docs names
+//
+extern CorNode* searchDocs(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* readDoc(CorAlloc* allocP, CorNode* argsP);
 
 
 

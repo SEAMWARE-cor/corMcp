@@ -7,7 +7,7 @@
 // corMcp - an MCP server for NGSI-LD brokers. Over stdio: one JSON-RPC message a line on stdin, the
 // answers on stdout, the log on stderr - what an MCP host (c³, Claude Code, ...) starts.
 //
-//   corMcp --broker http://host:port [--tenant T] [--context URL] [--token-env VAR] [--limit-max N]
+//   corMcp --broker http://host:port [--tenant T] [--context URL] [--token-env VAR] [--limit-max N] [--docs dir1:dir2]
 //
 #include <stdio.h>                               // getline, printf, fprintf
 #include <stdlib.h>                              // getenv, free
@@ -34,6 +34,7 @@ static char* tenantArg   = NULL;
 static char* contextArg  = NULL;
 static char* tokenEnvArg = NULL;
 static int   limitMaxArg = 100;
+static char* docsArg     = NULL;
 
 
 
@@ -48,6 +49,7 @@ static CorArg options[] =
   { "--context",   "-ctx", CorArgString, &contextArg, CorArgOpt, NULL,     NULL,  NULL,       "the @context URL short names expand with (default: the core context)" },
   { "--token-env", "-te", CorArgString, &tokenEnvArg, CorArgOpt, NULL,     NULL,  NULL,       "the environment variable holding the bearer token sent to the broker" },
   { "--limit-max", "-lm", CorArgInt,    &limitMaxArg, CorArgOpt, _vp 100,  _vp 1, _vp 1000,   "the largest 'limit' a tool call may ask for" },
+  { "--docs",      "-d",  CorArgString, &docsArg,     CorArgOpt, NULL,     NULL,  NULL,       "Markdown directories the model may search and read (dir1:dir2) - search_docs, read_doc" },
   CORARGS_END
 };
 
@@ -83,6 +85,7 @@ int main(int argC, char* argV[])
   mcpSession.context  = ((contextArg != NULL) && (contextArg[0] != 0)) ? contextArg : NULL;
   mcpSession.token    = NULL;
   mcpSession.limitMax = limitMaxArg;
+  mcpSession.docs     = ((docsArg != NULL) && (docsArg[0] != 0)) ? docsArg : NULL;
 
   if (tokenEnvArg != NULL)
   {

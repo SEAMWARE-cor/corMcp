@@ -318,6 +318,33 @@ def main():
                 http("DELETE", f"/subscriptions/{sub}")
         check("diagnose_subscription: placeholder endpoint, one match, the entity changed before it existed", diagnose)
 
+        def docs():
+            import os
+            d = Mcp("--docs", os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs"))
+            d.call("initialize", { "protocolVersion": "2025-06-18", "capabilities": {} })
+            names = [t["name"] for t in d.call("tools/list")["result"]["tools"]]
+            assert names[-2:] == ["search_docs", "read_doc"], names
+            r = ok(d.tool("search_docs", query="declared index slow"))
+            assert r["sections"][0]["file"] in ("kb/notes.md", "guide.md"), r
+            files = { s["file"] for s in r["sections"] }
+            assert files == { "kb/notes.md", "guide.md" }, r
+            r = ok(d.tool("read_doc"))
+            assert r["files"] == ["guide.md", "kb/notes.md"], r
+            r = ok(d.tool("read_doc", file="guide"))
+            assert r["sections"] == ["The guide", "  Indexes", "    Building one", "  Memory"], r      # the code block's # is no heading
+            r = ok(d.tool("read_doc", file="guide.md", section="indexes"))
+            assert "Building one" in r["text"] and "Memory" not in r["text"] and r["path"] == "The guide > Indexes", r
+            r = d.tool("read_doc", file="nope.md")
+            assert r["isError"] is True, r
+            r = d.tool("search_docs", query="the")
+            assert r["isError"] is True, r
+        check("search_docs, read_doc: --docs directories, sections, subsections, a code block's #", docs)
+
+        def noDocs():
+            names = [t["name"] for t in m.call("tools/list")["result"]["tools"]]
+            assert "search_docs" not in names, names
+        check("no --docs: no documentation tools", noDocs)
+
         def rpcErrors():
             a = m.call("tools/call", { "name": "nope", "arguments": {} })
             assert a["error"]["code"] == -32602
