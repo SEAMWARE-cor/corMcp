@@ -116,6 +116,19 @@ extern const char* toolsInstructions;
 
 // -----------------------------------------------------------------------------
 //
+// brokerTools.c - about the broker itself (coraine's admin API), read-only
+//
+extern CorNode* brokerStatus(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* brokerConfig(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* brokerMetrics(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* listIndexes(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* bridgeInventory(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* diagnoseSubscription(CorAlloc* allocP, CorNode* argsP);
+
+
+
+// -----------------------------------------------------------------------------
+//
 // shape.c
 //
 extern void      shapeCut(CorAlloc* allocP, CorNode* nodeP);
