@@ -49,7 +49,7 @@ static CorArg options[] =
   { "--context",   "-ctx", CorArgString, &contextArg, CorArgOpt, NULL,     NULL,  NULL,       "the @context URL short names expand with (default: the core context)" },
   { "--token-env", "-te", CorArgString, &tokenEnvArg, CorArgOpt, NULL,     NULL,  NULL,       "the environment variable holding the bearer token sent to the broker" },
   { "--limit-max", "-lm", CorArgInt,    &limitMaxArg, CorArgOpt, _vp 100,  _vp 1, _vp 1000,   "the largest 'limit' a tool call may ask for" },
-  { "--docs",      "-d",  CorArgString, &docsArg,     CorArgOpt, NULL,     NULL,  NULL,       "Markdown directories the model may search and read (dir1:dir2) - search_docs, read_doc" },
+  { "--docs",      "-d",  CorArgString, &docsArg,     CorArgOpt, NULL,     NULL,  NULL,       "Markdown directories and files the model may search and read (dir1:dir2:CHANGELOG.md) - search_docs, read_doc" },
   CORARGS_END
 };
 

@@ -864,3 +864,398 @@ CorNode* diagnoseSubscription(CorAlloc* allocP, CorNode* argsP)
 
   return shapeResult(allocP, outP, false);
 }
+
+
+
+// -----------------------------------------------------------------------------
+//
+// readLog - the broker's recent log: GET /admin/log/lines (coraine 0.8 - the lines it keeps in memory)
+//
+CorNode* readLog(CorAlloc* allocP, CorNode* argsP)
+{
+  McpResponse resp;
+  McpStr      q;
+  const char* types = str(argsP, "types");
+  const char* match = str(argsP, "match");
+  const char* since = str(argsP, "since");
+  double      lines = num(argsP, "lines", 50);
+
+  strInit(&q, allocP, 256);
+  char n[32];
+  snprintf(n, sizeof(n), "lines=%d", (lines < 1) ? 1 : (lines > 500) ? 500 : (int) lines);
+  strAdd(&q, n);
+  if ((types != NULL) && (types[0] != 0)) { strAdd(&q, "&types="); strAddUrlEncoded(&q, types, ""); }
+  if ((match != NULL) && (match[0] != 0)) { strAdd(&q, "&match="); strAddUrlEncoded(&q, match, ""); }
+  if ((since != NULL) && (since[0] != 0)) { strAdd(&q, "&since="); strAddUrlEncoded(&q, since, ":"); }
+
+  if (!get(allocP, "/admin/log/lines", q.buf, &resp) || (resp.body == NULL))
+  {
+    if (resp.status == 0)
+      return shapeBrokerError(allocP, &resp);
+    if ((resp.status == 404) || (resp.status == 405) || (resp.status == 501))
+      return shapeError(allocP, "this broker cannot show its log: GET /admin/log/lines is coraine 0.8 and later, with the admin API (--apiPlugins admin) and COR_FEATURE_LOG_LINES (%d)", resp.status);
+    if (resp.status == 409)
+      return shapeError(allocP, "the broker keeps no log in memory: it runs with --logLines 0");
+    if (resp.status == 400)
+      return shapeError(allocP, "the broker refused the parameters: %s", (resp.text != NULL) ? resp.text : "400");
+    return shapeError(allocP, "the log is not available: %s", adminWhy(&resp));
+  }
+
+  CorNode* matchedP = corTreeLookup(resp.body, "matched");
+  CorNode* linesP   = corTreeLookup(resp.body, "lines");
+  int      matched  = ((matchedP != NULL) && (matchedP->type == CorInt)) ? (int) matchedP->value.i : -1;
+  int      shown    = 0;
+
+  if ((linesP != NULL) && (linesP->type == CorArray))
+    for (CorNode* lP = linesP->value.head; lP != NULL; lP = lP->next)
+      ++shown;
+
+  corTreeChildAdd(resp.body, corTreeString(allocP, "note",
+    (matched > shown) ? "the newest of the lines that match - since, types or match for others; the broker keeps only its recent log (--logLines)" :
+    "oldest first; each line: its UTC time, its type (E error, W warning, I info, V verbose, T trace), the source file and function, the message"));
+
+  return shapeResult(allocP, resp.body, false);
+}
+
+
+
+// -----------------------------------------------------------------------------
+//
+// Option - an option of /admin/config: its value as text ("" when none), where it came from
+//
+typedef struct Option
+{
+  const char* value;
+  const char* from;
+  bool        found;
+} Option;
+
+static Option option(CorAlloc* allocP, CorNode* optionsP, const char* name)
+{
+  Option o = { "", NULL, false };
+
+  for (CorNode* oP = optionsP->value.head; oP != NULL; oP = oP->next)
+  {
+    const char* oName = str(oP, "name");
+    if ((oName == NULL) || (strcmp(oName, name) != 0))
+      continue;
+    CorNode* vP = corTreeLookup(oP, "value");
+    o.found = true;
+    o.from  = str(oP, "from");
+    if (vP == NULL)                 o.value = "";
+    else if (vP->type == CorString) o.value = vP->value.s;
+    else if (vP->type == CorBoolean) o.value = vP->value.b ? "true" : "";
+    else if (vP->type == CorInt)    { char* b = corAlloc(allocP, 24); snprintf(b, 24, "%lld", (long long) vP->value.i); o.value = (vP->value.i == 0) ? "" : b; }
+    else                            o.value = "";
+    return o;
+  }
+  return o;
+}
+
+static bool set(Option* oP)
+{
+  return (oP->value[0] != 0);
+}
+
+static bool onCommandLine(Option* oP)
+{
+  return (oP->from != NULL) && ((strcmp(oP->from, "longOption") == 0) || (strcmp(oP->from, "shortOption") == 0));
+}
+
+
+
+// -----------------------------------------------------------------------------
+//
+// securityReview - who can do what with this broker, from its configuration: the findings, each with why and the fix
+//
+CorNode* securityReview(CorAlloc* allocP, CorNode* argsP)
+{
+  McpResponse resp;
+  (void) argsP;
+
+  if (!get(allocP, "/admin/config", NULL, &resp) || (resp.body == NULL))
+    return (resp.status == 0) ? shapeBrokerError(allocP, &resp) : shapeError(allocP, "the configuration is not available: %s", adminWhy(&resp));
+
+  CorNode* optionsP = corTreeLookup(resp.body, "options");
+  if ((optionsP == NULL) || (optionsP->type != CorArray))
+    return shapeError(allocP, "the broker's /admin/config has no 'options' array");
+
+  Option port        = option(allocP, optionsP, "--port");
+  Option auth        = option(allocP, optionsP, "--auth");
+  Option apiPlugins  = option(allocP, optionsP, "--apiPlugins");
+  Option https       = option(allocP, optionsP, "--https");
+  Option cors        = option(allocP, optionsP, "--corsOrigin");
+  Option insecure    = option(allocP, optionsP, "--insecureNotif");
+  Option papPort     = option(allocP, optionsP, "--policyApiPort");
+  Option papHost     = option(allocP, optionsP, "--policyApiHost");
+  Option corPort     = option(allocP, optionsP, "--corPort");
+  Option healthPort  = option(allocP, optionsP, "--healthPort");
+  Option transports  = option(allocP, optionsP, "--transports");
+  Option dbHost      = option(allocP, optionsP, "--dbHost");
+  Option dbUser      = option(allocP, optionsP, "--dbUser");
+  Option dbURI       = option(allocP, optionsP, "--dbURI");
+  Option dbPwd       = option(allocP, optionsP, "--dbPwd");
+  Option troePwd     = option(allocP, optionsP, "--troePwd");
+  Option troeHost    = option(allocP, optionsP, "--troeHost");
+  Option troeUser    = option(allocP, optionsP, "--troeUser");
+  Option troe        = option(allocP, optionsP, "--troe");
+
+  CorNode*  outP   = corTreeObject(allocP, NULL);
+  CorNode*  listP  = corTreeArray(allocP, "findings");
+  char      b[1024];
+  bool      admin  = (strstr(apiPlugins.value, "admin") != NULL);
+  bool      noAuth = !set(&auth);
+  int       high   = 0;
+
+  //
+  // Who can read and write
+  //
+  if (noAuth)
+  {
+    snprintf(b, sizeof(b), "No auth plugin (--auth): whoever reaches port %s can read, create, change and delete every entity, subscription and registration, in every tenant%s. The broker listens on every address of the machine. Fix: --auth oidc (an OpenID provider's tokens and roles) or --auth fdsc (a Data Space Connector's), or a gateway in front that checks tokens and a firewall that lets only it reach the port (authorization.md)",
+             set(&port) ? port.value : "1026", admin ? " - and use the admin API: change log levels, declare and drop indexes, read the configuration and the log" : "");
+    finding(allocP, listP, "high", b);
+    ++high;
+  }
+  else
+  {
+    snprintf(b, sizeof(b), "Auth plugin %s: every request is asked (HTTP, cor://, each WebSocket message) - authenticated, authorized, and entity by entity; a notification is sent only with what its subscription's owner may read (authorization.md § 2.1)", auth.value);
+    finding(allocP, listP, "ok", b);
+  }
+
+  //
+  // On the wire
+  //
+  if (!set(&https))
+  {
+    if (!noAuth)
+      finding(allocP, listP, "medium", "No HTTPS (--https): the clients' tokens cross the network in clear - anyone on the path can take one and use it. Fix: --https with --key and --cert, or a TLS proxy in front, the broker's port then reachable only from it");
+    else
+      finding(allocP, listP, "info", "No HTTPS (--https): requests and answers cross the network in clear. With TLS in a proxy in front, that is fine when only the proxy reaches the port");
+  }
+  else
+    finding(allocP, listP, "ok", "HTTPS on the NGSI-LD port (--https)");
+
+  if (strcmp(cors.value, "__ALL") == 0)
+    finding(allocP, listP, noAuth ? "high" : "medium", noAuth ? "CORS for any origin (--corsOrigin __ALL) with no auth: any web page a user of this network opens can read and write the broker from their browser. Fix: --corsOrigin the one origin of your web app, or none" :
+                                                                "CORS for any origin (--corsOrigin __ALL): any web page can call the broker from a browser - with a token it has. Fix: --corsOrigin the origin of your web app");
+  if (set(&insecure))
+    finding(allocP, listP, "medium", "--insecureNotif: every outgoing HTTPS request (notifications, forwards) accepts any certificate - a receiver can be impersonated. Fix: the receivers' CA in the system's trust store, and the option off");
+
+  //
+  // The other ports
+  //
+  if (set(&papPort))
+  {
+    bool local = (strcmp(papHost.value, "127.0.0.1") == 0) || (strcmp(papHost.value, "::1") == 0) || (strcmp(papHost.value, "localhost") == 0);
+    snprintf(b, sizeof(b), "The policy API (the ODRL policies fdsc.so decides with) on port %s, listening on %s%s", papPort.value, set(&papHost) ? papHost.value : "127.0.0.1",
+             local ? " - this machine only" : ": whoever reaches it can change the policies, so who may do what. Fix: --policyApiHost 127.0.0.1, or a firewall");
+    finding(allocP, listP, local ? "ok" : "high", b);
+    high += local ? 0 : 1;
+  }
+  if (set(&corPort))
+  {
+    snprintf(b, sizeof(b), "cor:// on port %s, every address (IPv4 and IPv6) - the same API as HTTP, %s", corPort.value, noAuth ? "with no auth either" : "asked of the auth plugin as HTTP is");
+    finding(allocP, listP, noAuth ? "high" : "info", b);
+  }
+  if (set(&healthPort))
+  {
+    snprintf(b, sizeof(b), "The health port %s is outside the auth plugin: /live, /ready and a report (no data) - keep it to the orchestrator's network", healthPort.value);
+    finding(allocP, listP, "info", b);
+  }
+  if (set(&transports))
+  {
+    snprintf(b, sizeof(b), "Transports %s: the API over WebSocket - each message carries its own Authorization%s", transports.value, noAuth ? "; with no auth, none is checked" : ", checked as a request");
+    finding(allocP, listP, noAuth ? "medium" : "info", b);
+  }
+
+  //
+  // The stores
+  //
+  if (dbHost.found && !set(&dbURI) && !set(&dbUser))
+  {
+    bool local = !set(&dbHost) || (strcmp(dbHost.value, "localhost") == 0) || (strcmp(dbHost.value, "127.0.0.1") == 0);
+    snprintf(b, sizeof(b), "MongoDB at %s without credentials (--dbUser, --dbURI): whoever reaches it reads and writes the data directly, around the broker and its auth%s",
+             set(&dbHost) ? dbHost.value : "localhost", local ? " - on this machine; keep MongoDB bound to localhost" : ". Fix: a MongoDB user for the broker (--dbUser, --dbPwd) and MongoDB's own auth on");
+    finding(allocP, listP, local ? "medium" : "high", b);
+    high += local ? 0 : 1;
+  }
+  if ((strcmp(troe.value, "timescale") == 0) && !set(&troeUser))
+  {
+    snprintf(b, sizeof(b), "TimescaleDB at %s with no --troeUser: the history is reached with the default user", set(&troeHost) ? troeHost.value : "localhost");
+    finding(allocP, listP, "medium", b);
+  }
+  if ((set(&dbPwd) && onCommandLine(&dbPwd)) || (set(&troePwd) && onCommandLine(&troePwd)) || (set(&dbURI) && onCommandLine(&dbURI)))
+    finding(allocP, listP, "medium", "A database password on the command line (--dbPwd, --troePwd or --dbURI): every user of the machine sees it in ps. Fix: the environment variable (CORAINE_DBPWD ...) or the configuration file, mode 600");
+
+  corTreeChildAdd(outP, corTreeString(allocP, "summary", (high > 0) ? "not safe to expose: see the high findings" : noAuth ? "no auth - only for a closed network" : "no high finding"));
+  corTreeChildAdd(outP, listP);
+  corTreeChildAdd(outP, corTreeString(allocP, "notChecked", "the network around the broker (firewall, proxy, TLS in front), the OpenID provider's or the connector's own set-up, the roles and policies themselves - ask the user about these"));
+
+  return shapeResult(allocP, outP, false);
+}
+
+
+
+// -----------------------------------------------------------------------------
+//
+// diagnoseDevice - why a device's values do not arrive: the Bridges (a plugin not loaded), the Channels that map
+// the entity (dormant, never a sample, payloads refused, outbound only), the attribute's value ("uninitialized":
+// no sample yet) and when it came, the bridge's errors in the log
+//
+CorNode* diagnoseDevice(CorAlloc* allocP, CorNode* argsP)
+{
+  const char* id   = str(argsP, "entity");
+  const char* attr = str(argsP, "attribute");
+
+  if ((id == NULL) || (id[0] == 0))
+    return shapeError(allocP, "'entity' is required: the id of the entity the device's values should reach");
+
+  McpResponse resp;
+  CorNode*    outP    = corTreeObject(allocP, NULL);
+  CorNode*    checksP = corTreeArray(allocP, "checks");
+  CorNode*    chP     = corTreeArray(allocP, "channels");
+  char        b[1024];
+  const char* bridgeOfIt = NULL;
+
+  //
+  // The Bridges
+  //
+  if (!get(allocP, "/bridges", NULL, &resp) || (resp.body == NULL) || (resp.body->type != CorArray))
+  {
+    if (resp.status == 0)
+      return shapeBrokerError(allocP, &resp);
+    return shapeError(allocP, "this broker has no bridges API (GET /ngsi-ld/v1/bridges answered %d): not a coraine with bridges", resp.status);
+  }
+
+  CorNode* bridgesP = resp.body;
+  int      nBridges = 0;
+  for (CorNode* bP = bridgesP->value.head; bP != NULL; bP = bP->next)
+  {
+    const char* bId    = str(bP, "id");
+    const char* status = str(bP, "status");
+    ++nBridges;
+    if ((status != NULL) && (strcmp(status, "available") != 0))
+    {
+      snprintf(b, sizeof(b), "%s is %s - its plugin is not on --bridges, or it could not start; none of its Channels carries anything", bId ? bId : "a bridge", status);
+      check(allocP, checksP, "bridge", 0, "%s", b);
+    }
+  }
+  if (nBridges == 0)
+    check(allocP, checksP, "bridges", 0, "%s", "the broker has no Bridge - no --bridges, or no --bridgeConfig naming one: no device's values come in through a bridge");
+
+  //
+  // The Channels on the entity (DataChannels too, where the broker has them)
+  //
+  int nCh = 0;
+  const char* lists[] = { "/channels", "/dataChannels", NULL };
+  for (int lx = 0; lists[lx] != NULL; lx++)
+  {
+    if (!get(allocP, lists[lx], NULL, &resp) || (resp.body == NULL) || (resp.body->type != CorArray))
+      continue;
+
+    for (CorNode* cP = resp.body->value.head; cP != NULL; cP = cP->next)
+    {
+      CorNode*    eP   = corTreeLookup(cP, "entity");
+      const char* eId  = (eP != NULL) ? str(eP, "id") : NULL;
+      const char* a    = str(cP, "entityAttribute");
+      if ((eId == NULL) || (strcmp(eId, id) != 0))
+        continue;
+      if ((attr != NULL) && (attr[0] != 0) && (a != NULL) && (strcmp(a, attr) != 0) && (strstr(a, attr) == NULL))
+        continue;
+
+      ++nCh;
+      const char* cId    = str(cP, "id");
+      const char* status = str(cP, "status");
+      const char* why    = str(cP, "statusReason");
+      const char* dir    = str(cP, "channelDirection");
+      const char* target = str(cP, "channelTarget");
+      double      in     = num(cP, "samplesIn", -1);
+      double      refused = num(cP, "payloadsRefused", 0);
+      CorNode*    discP  = corTreeLookup(cP, "endpointDiscovered");
+
+      bridgeOfIt = str(cP, "bridgeId");
+
+      CorNode* sumP = corTreeObject(allocP, NULL);
+      corTreeChildAdd(sumP, corTreeString(allocP, "id", cId ? cId : ""));
+      corTreeChildAdd(sumP, corTreeString(allocP, "attribute", a ? a : ""));
+      corTreeChildAdd(sumP, corTreeString(allocP, "endpoint", target ? target : ""));
+      corTreeChildAdd(sumP, corTreeString(allocP, "direction", dir ? dir : "both"));
+      corTreeChildAdd(sumP, corTreeString(allocP, "status", status ? status : ""));
+      if (why != NULL) corTreeChildAdd(sumP, corTreeString(allocP, "statusReason", why));
+      if (in >= 0)     corTreeChildAdd(sumP, corTreeInteger(allocP, "samplesIn", (long long) in));
+      corTreeChildAdd(chP, sumP);
+
+      snprintf(b, sizeof(b), "%s (%s <- %s): %s%s%s", cId ? cId : "", a ? a : "", target ? target : "", status ? status : "?", why ? " - " : "", why ? why : "");
+      check(allocP, checksP, "channel.status", (status != NULL) && (strcmp(status, "available") == 0), "%s", b);
+      if ((dir != NULL) && (strcmp(dir, "out") == 0))
+        check(allocP, checksP, "channel.direction", 0, "%s carries the attribute OUT to the device only - nothing comes in on it", cId ? cId : "");
+      else if (in == 0)
+        check(allocP, checksP, "channel.samplesIn", 0, "%s: no sample has come in on %s since the broker started%s", cId ? cId : "", target ? target : "its endpoint",
+              ((discP != NULL) && (discP->type == CorBoolean) && discP->value.b) ? " (the endpoint was discovered: the device is there, and silent)" : " - the device does not publish there: the topic or address, the device, the network");
+      else if (in > 0)
+        check(allocP, checksP, "channel.samplesIn", 1, "%s: %.0f samples in since the broker started", cId ? cId : "", in);
+      if (refused > 0)
+        check(allocP, checksP, "channel.payloadsRefused", 0, "%s: %.0f payloads refused by the payload check - they come in and are not stored (the value's type or range)", cId ? cId : "", refused);
+    }
+  }
+
+  if (nCh == 0)
+    check(allocP, checksP, "channels", 0, "no Channel maps %s%s%s - values come in only on a mapped endpoint (--bridgeConfig, 'ngsild' section); an unmapped one lands on the bridge's catch-all entity (urn:ngsi-ld:<bridge>:default)",
+          id, attr ? " " : "", attr ? attr : "");
+
+  //
+  // The bridge's errors and warnings in the log (coraine 0.8+) - before the requests below, which log their own
+  //
+  const char* bridgeName = NULL;
+  if (bridgeOfIt != NULL)
+  {
+    const char* colon = strrchr(bridgeOfIt, ':');
+    bridgeName = (colon != NULL) ? colon + 1 : bridgeOfIt;
+  }
+  McpStr lq;
+  strInit(&lq, allocP, 128);
+  strAdd(&lq, "lines=10&types=EW");
+  if (bridgeName != NULL) { strAdd(&lq, "&match="); strAddUrlEncoded(&lq, bridgeName, ""); }
+  if ((bridgeName != NULL) && get(allocP, "/admin/log/lines", lq.buf, &resp) && (resp.body != NULL))
+  {
+    CorNode* linesP = corTreeLookup(resp.body, "lines");
+    if (linesP != NULL)
+    {
+      linesP->name = (char*) "logErrors";
+      corTreeChildRemove(resp.body, linesP);
+      corTreeChildAdd(outP, linesP);
+    }
+  }
+
+  //
+  // The attribute's value, and when
+  //
+  char* path = encoded(allocP, "/entities/", id);
+  McpStr q;
+  strInit(&q, allocP, 128);
+  strAdd(&q, "options=sysAttrs");
+  if ((attr != NULL) && (attr[0] != 0)) { strAdd(&q, "&attrs="); strAddUrlEncoded(&q, attr, ""); }
+
+  if (!get(allocP, path, q.buf, &resp) || (resp.body == NULL))
+    check(allocP, checksP, "entity", 0, "%s: %s", id, (resp.status == 404) ? "no such entity - a mapped attribute exists from the broker's start: the Channel names another id, or another tenant" : "could not be read");
+  else
+  {
+    for (CorNode* aP = resp.body->value.head; aP != NULL; aP = aP->next)
+    {
+      if ((aP->type != CorObject) || (aP->name == NULL))
+        continue;
+      CorNode*    vP       = corTreeLookup(aP, "value");
+      const char* modified = str(aP, "modifiedAt");
+      const char* observed = str(aP, "observedAt");
+      if ((vP != NULL) && (vP->type == CorString) && (strcmp(vP->value.s, "uninitialized") == 0))
+        check(allocP, checksP, "attribute.value", 0, "%s is \"uninitialized\": not one sample since the broker started", aP->name);
+      else if (vP != NULL)
+        check(allocP, checksP, "attribute.value", 1, "%s has a value, last changed %s%s%s", aP->name, modified ? modified : "(no modifiedAt)", observed ? ", observed " : "", observed ? observed : "");
+    }
+  }
+
+  corTreeChildAdd(outP, checksP);
+  corTreeChildAdd(outP, chP);
+  return shapeResult(allocP, outP, false);
+}

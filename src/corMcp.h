@@ -125,6 +125,12 @@ extern CorNode* brokerMetrics(CorAlloc* allocP, CorNode* argsP);
 extern CorNode* listIndexes(CorAlloc* allocP, CorNode* argsP);
 extern CorNode* bridgeInventory(CorAlloc* allocP, CorNode* argsP);
 extern CorNode* diagnoseSubscription(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* readLog(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* securityReview(CorAlloc* allocP, CorNode* argsP);
+extern CorNode* diagnoseDevice(CorAlloc* allocP, CorNode* argsP);
+
+// sdm.c - FIWARE's Smart Data Models
+extern CorNode* smartDataModel(CorAlloc* allocP, CorNode* argsP);
 
 
 

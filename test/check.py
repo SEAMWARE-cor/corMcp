@@ -155,12 +155,13 @@ def main():
             tools = m.call("tools/list")["result"]["tools"]
             names = [t["name"] for t in tools]
             assert names == ["list_types", "list_attributes", "query_entities", "get_entity", "count_entities", "temporal", "list_subscriptions", "query_registrations",
-                             "broker_status", "broker_config", "diagnose_subscription", "broker_metrics", "list_indexes", "bridge_inventory"], names
+                             "broker_status", "broker_config", "diagnose_subscription", "broker_metrics", "list_indexes", "bridge_inventory",
+                             "read_log", "diagnose_device", "security_review", "smart_data_model"], names
             for t in tools:
                 assert t["inputSchema"]["type"] == "object", t["name"]
                 assert t["annotations"]["readOnlyHint"] is True
                 assert len(t["description"]) > 40
-        check("tools/list: fourteen read tools, schemas, annotations", toolsList)
+        check("tools/list: eighteen read tools, schemas, annotations", toolsList)
 
         def listTypes():
             types = ok(m.tool("list_types"))["types"]
@@ -317,6 +318,42 @@ def main():
             finally:
                 http("DELETE", f"/subscriptions/{sub}")
         check("diagnose_subscription: placeholder endpoint, one match, the entity changed before it existed", diagnose)
+
+        def security():
+            r = ok(m.tool("security_review"))
+            assert r["summary"] and isinstance(r["findings"], list) and r["findings"], r
+            assert all(f["severity"] in ("high", "medium", "info", "ok") for f in r["findings"]), r
+            assert "notChecked" in r, r
+        check("security_review: findings by severity, what it cannot see", security)
+
+        def readLog():
+            r = m.tool("read_log", types="EW", lines=5)
+            if r.get("isError"):
+                assert "0.8" in json.dumps(r) or "--logLines" in json.dumps(r), r      # an older coraine: said so
+            else:
+                assert isinstance(r["structuredContent"]["lines"], list), r
+        check("read_log: the recent lines, or why there are none", readLog)
+
+        def device():
+            r = m.tool("diagnose_device", entity="urn:ngsi-ld:Nothing:here")
+            if not r.get("isError"):
+                checks = r["structuredContent"]["checks"]
+                assert any(c["ok"] is False for c in checks), r                           # nothing maps it: said so
+            r = m.tool("diagnose_device")
+            assert r["isError"] is True, r
+        check("diagnose_device: an entity nothing maps; the entity required", device)
+
+        def sdm():
+            r = m.tool("smart_data_model", search="parking")
+            if r.get("isError"):
+                assert "GitHub" in json.dumps(r), r                                       # no network here: said so
+                return
+            names = [x["model"] for x in r["structuredContent"]["models"]]
+            assert "OffStreetParking" in names, names
+            r = ok(m.tool("smart_data_model", model="OffStreetParking"))
+            assert r["subject"] == "dataModel.Parking" and "attributes" in r, r
+            assert m.tool("smart_data_model", model="NoSuchModelAtAll")["isError"] is True
+        check("smart_data_model: a search, a model's attributes, an unknown model", sdm)
 
         def docs():
             import os
