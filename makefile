@@ -47,10 +47,20 @@ COR_ARCHIVES = $(COR_LIBS)/corRest/libcorRest.a   \
 
 LIBS        = $(COR_ARCHIVES) -lssl -lcrypto -lz -lpthread -lm
 
+#
+# macOS: clang (no -Wformat-truncation: unknown there; corAlloc.h and CorAlloc.h are one file, either spelling
+# finds it) and Homebrew's OpenSSL - OPENSSL=<prefix> for another
+#
+ifeq ($(shell uname -s),Darwin)
+  OPENSSL    ?= $(shell brew --prefix openssl@3 2>/dev/null)
+  CFLAGS     += -Wno-unknown-warning-option -Wno-nonportable-include-path -I$(OPENSSL)/include
+  LDFLAGS    += -L$(OPENSSL)/lib
+endif
+
 all: corMcp
 
 corMcp: $(OBJECTS) $(COR_ARCHIVES)
-	$(CC) -o $@ $(OBJECTS) $(LIBS)
+	$(CC) -o $@ $(OBJECTS) $(LDFLAGS) $(LIBS)
 
 $(OBJDIR)/%.o: src/%.c
 	@mkdir -p $(OBJDIR)
